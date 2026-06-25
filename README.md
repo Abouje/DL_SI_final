@@ -1,155 +1,171 @@
-COLMAP
-======
+# HW3: 深度学习与空间智能
 
-About
------
+期末作业代码仓库，包含两个任务：
+- **Task 1**：基于 3DGS 与 AIGC 的多源资产生成与真实场景融合
+- **Task 2**：基于 LeRobot 的 ACT 策略跨环境泛化
 
-COLMAP is a general-purpose Structure-from-Motion (SfM) and Multi-View Stereo
-(MVS) pipeline with a graphical and command-line interface. It offers a wide
-range of features for reconstruction of ordered and unordered image collections.
-The software is licensed under the new BSD license.
+实验报告见 `report/main.pdf`，作业说明见 `HW3_深度学习与空间智能.pdf`。
 
-The latest source code is available at https://github.com/colmap/colmap. COLMAP
-builds on top of existing works and when using specific algorithms within
-COLMAP, please also cite the original authors, as specified in the source code,
-and consider citing relevant third-party dependencies (most notably
-ceres-solver, poselib, sift-gpu, vlfeat).
+> **数据集与模型权重**单独打包，请从网盘下载后按下方说明放置。
+>
+> **注意**：由于文件体积限制，`task1_3dgs_aigc/threestudio/load/zero123/stable_zero123.ckpt` 已从代码包中移除。使用 Zero123 单图到3D 功能前，请手动下载该权重文件并放置到对应路径：
+> ```
+> task1_3dgs_aigc/threestudio/load/zero123/stable_zero123.ckpt
+> ```
+> 下载方式（任选其一）：
+> - 官方 HuggingFace：`huggingface-cli download stabilityai/stable-zero123 stable_zero123.ckpt --local-dir task1_3dgs_aigc/threestudio/load/zero123/`
+> - 或从本作业网盘的模型权重包中获取。
 
-Download
---------
+---
 
-* Binaries for **Windows** and other resources can be downloaded
-  from https://github.com/colmap/colmap/releases.
-* Binaries for **Linux/Unix/BSD** are available at
-  https://repology.org/metapackage/colmap/versions.
-* Pre-built **Docker** images are available at
-  https://hub.docker.com/r/colmap/colmap.
-* Conda packages are available at https://anaconda.org/conda-forge/colmap and
-  can be installed with `conda install colmap`
-* **Python bindings** are available at https://pypi.org/project/pycolmap.
-  CUDA-enabled wheels are available at https://pypi.org/project/pycolmap-cuda12.
-* To **build from source**, please see https://colmap.github.io/install.html.
+## 目录结构
 
-Getting Started
----------------
+```
+HW3_code/
+├── task1_3dgs_aigc/
+│   ├── colmap/               # COLMAP 位姿估计
+│   ├── gaussian-splatting/   # 3DGS 重建与渲染
+│   └── threestudio/          # 文本/单图到3D生成
+├── task2_lerobot_act/
+│   └── lerobot/              # LeRobot ACT 策略训练与测试
+└── report/                   # LaTeX 实验报告
+```
 
-1. Download pre-built binaries or build from source.
-2. Download one of the provided [sample datasets](https://demuc.de/colmap/datasets/)
-   or use your own images.
-3. Use the **automatic reconstruction** to easily build models
-   with a single click or command.
+---
 
-Documentation
--------------
+## Task 1：3DGS + AIGC
 
-The documentation is available [here](https://colmap.github.io/).
+### 环境配置
 
-To build and update the documentation at the documentation website,
-follow [these steps](https://colmap.github.io/install.html#documentation).
+```bash
+# 3D Gaussian Splatting
+cd task1_3dgs_aigc/gaussian-splatting
+conda env create -f environment.yml
+conda activate gaussian_splatting
+pip install submodules/diff-gaussian-rasterization
+pip install submodules/simple-knn
 
-Support
--------
+# ThreeStudio
+cd ../threestudio
+pip install -r requirements.txt
+```
 
-Please, use [GitHub Discussions](https://github.com/colmap/colmap/discussions)
-for questions and the [GitHub issue tracker](https://github.com/colmap/colmap)
-for bug reports, feature requests/additions, etc.
+### 数据准备
 
-Acknowledgments
----------------
+将数据集解压后放置如下（数据包单独提供）：
 
-COLMAP was originally written by [Johannes Schönberger](https://demuc.de/) with
-funding provided by his PhD advisors Jan-Michael Frahm and Marc Pollefeys.
-The team of core project maintainers currently includes
-[Johannes Schönberger](https://github.com/ahojnnes),
-[Paul-Edouard Sarlin](https://github.com/sarlinpe),
-[Shaohui Liu](https://github.com/B1ueber2y), and
-[Linfei Pan](https://lpanaf.github.io/).
+```
+task1_3dgs_aigc/data/
+├── object_A/          # 自拍物体 A 的多视角图像
+├── object_C/          # 物体 C 的单张图片
+└── garden/            # Mip-NeRF 360 garden 背景场景
+```
 
-The Python bindings in PyCOLMAP were originally added by
-[Mihai Dusmanu](https://github.com/mihaidusmanu),
-[Philipp Lindenberger](https://github.com/Phil26AT), and
-[Paul-Edouard Sarlin](https://github.com/sarlinpe).
+### 训练命令
 
-The project has also benefitted from countless community contributions, including
-bug fixes, improvements, new features, third-party tooling, and community
-support (special credits to [Torsten Sattler](https://tsattler.github.io)).
+**物体 A（多视角重建）**
+```bash
+# 1. COLMAP 位姿估计（可用 gaussian-splatting 自带 convert.py）
+cd task1_3dgs_aigc/gaussian-splatting
+python convert.py -s ../data/object_A
 
-Citation
---------
+# 2. 3DGS 训练
+python train.py -s ../data/object_A --model_path ../output/object_A
+```
 
-If you use this project for your research, please cite:
+**物体 B（文本到3D，DreamFusion）**
+```bash
+cd task1_3dgs_aigc/threestudio
+python launch.py --config configs/dreamfusion-sd.yaml --train \
+  system.prompt_processor.prompt="a 3D model of <your object>"
+```
 
-    @inproceedings{schoenberger2016sfm,
-        author={Sch\"{o}nberger, Johannes Lutz and Frahm, Jan-Michael},
-        title={Structure-from-Motion Revisited},
-        booktitle={Conference on Computer Vision and Pattern Recognition (CVPR)},
-        year={2016},
-    }
+**物体 C（单图到3D，Zero123）**
+```bash
+cd task1_3dgs_aigc/threestudio
+python launch.py --config configs/zero123.yaml --train \
+  data.image_path=../data/object_C/object_C_rgba.png
+```
 
-    @inproceedings{schoenberger2016mvs,
-        author={Sch\"{o}nberger, Johannes Lutz and Zheng, Enliang and Pollefeys, Marc and Frahm, Jan-Michael},
-        title={Pixelwise View Selection for Unstructured Multi-View Stereo},
-        booktitle={European Conference on Computer Vision (ECCV)},
-        year={2016},
-    }
+**背景场景（garden）**
+```bash
+cd task1_3dgs_aigc/gaussian-splatting
+python train.py -s ../data/garden --model_path ../output/garden
+```
 
-If you use the global SfM pipeline (GLOMAP), please cite:
+### 渲染命令
 
-    @inproceedings{pan2024glomap,
-        author={Pan, Linfei and Barath, Daniel and Pollefeys, Marc and Sch\"{o}nberger, Johannes Lutz},
-        title={{Global Structure-from-Motion Revisited}},
-        booktitle={European Conference on Computer Vision (ECCV)},
-        year={2024},
-    }
+```bash
+cd task1_3dgs_aigc/gaussian-splatting
+# 渲染单场景
+python render.py -m ../output/garden
 
-If you use the image retrieval / vocabulary tree engine, please cite:
+# 渲染融合场景
+python render.py -m ../output/fused_scene --skip_train
+```
 
-    @inproceedings{schoenberger2016vote,
-        author={Sch\"{o}nberger, Johannes Lutz and Price, True and Sattler, Torsten and Frahm, Jan-Michael and Pollefeys, Marc},
-        title={A Vote-and-Verify Strategy for Fast Spatial Verification in Image Retrieval},
-        booktitle={Asian Conference on Computer Vision (ACCV)},
-        year={2016},
-    }
+---
 
-Contribution
-------------
+## Task 2：LeRobot ACT
 
-Contributions (bug reports, bug fixes, improvements, etc.) are very welcome and
-should be submitted in the form of new issues and/or pull requests on GitHub.
+### 环境配置
 
-License
--------
+```bash
+cd task2_lerobot_act/lerobot
+pip install -e ".[act]"
+```
 
-The COLMAP library is licensed under the new BSD license. Note that this text
-refers only to the license for COLMAP itself, independent of its thirdparty
-dependencies, which are separately licensed. Building COLMAP with these
-dependencies may affect the resulting COLMAP license.
+### 数据准备
 
-    Copyright (c), ETH Zurich and UNC Chapel Hill.
-    All rights reserved.
+将 CALVIN 数据集解压后放置如下（数据包单独提供）：
 
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
+```
+task2_lerobot_act/data/
+└── calvin_task_ABC_D/
+    ├── calvin_task_ABC_D_lerobot_0_4/   # 仅环境A数据
+    └── calvin_task_envABC/              # 环境A+B+C混合数据
+```
 
-        * Redistributions of source code must retain the above copyright
-          notice, this list of conditions and the following disclaimer.
+### 训练命令
 
-        * Redistributions in binary form must reproduce the above copyright
-          notice, this list of conditions and the following disclaimer in the
-          documentation and/or other materials provided with the distribution.
+**仅环境 A 训练**
+```bash
+cd task2_lerobot_act/lerobot
+python lerobot/scripts/train.py \
+  policy=act \
+  env=calvin \
+  dataset_repo_id=data/calvin_task_ABC_D/calvin_task_ABC_D_lerobot_0_4 \
+  hydra.run.dir=../../output/task2_act/env_A
+```
 
-        * Neither the name of ETH Zurich and UNC Chapel Hill nor the names of
-          its contributors may be used to endorse or promote products derived
-          from this software without specific prior written permission.
+**多环境 A+B+C 联合训练**
+```bash
+cd task2_lerobot_act/lerobot
+python lerobot/scripts/train.py \
+  policy=act \
+  env=calvin \
+  dataset_repo_id=data/calvin_task_ABC_D/calvin_task_envABC \
+  hydra.run.dir=../../output/task2_act/run_envABC
+```
 
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-    AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-    IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-    ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
-    LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-    CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-    SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-    INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-    CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-    ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-    POSSIBILITY OF SUCH DAMAGE.
+### 测试命令（Zero-shot 跨环境）
+
+```bash
+cd task2_lerobot_act/lerobot
+python lerobot/scripts/eval.py \
+  -p ../../output/task2_act/env_A \
+  eval.n_episodes=50
+```
+
+---
+
+## 子项目 README
+
+各子项目含详细原始文档：
+
+| 子项目 | README |
+|--------|--------|
+| COLMAP | [task1_3dgs_aigc/colmap/README.md](task1_3dgs_aigc/colmap/README.md) |
+| 3D Gaussian Splatting | [task1_3dgs_aigc/gaussian-splatting/README.md](task1_3dgs_aigc/gaussian-splatting/README.md) |
+| ThreeStudio | [task1_3dgs_aigc/threestudio/README.md](task1_3dgs_aigc/threestudio/README.md) |
+| LeRobot | [task2_lerobot_act/lerobot/README.md](task2_lerobot_act/lerobot/README.md) |
